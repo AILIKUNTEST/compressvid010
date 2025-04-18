@@ -7,44 +7,37 @@
   <style>
     body {
       font-family: sans-serif;
-      padding: 20px;
-      background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
-      color: white;
       text-align: center;
+      padding: 20px;
+      background: linear-gradient(to bottom, #111, #222);
+      color: white;
     }
     input, select, button {
-      margin: 10px 0;
+      margin: 10px;
       padding: 10px;
-      width: 100%;
-      max-width: 300px;
-      border: none;
-      border-radius: 5px;
+      font-size: 16px;
     }
-    progress {
-      width: 100%;
+    #progressBar {
+      width: 80%;
       height: 20px;
-      margin-top: 20px;
-    }
-    #doneMsg {
-      display: none;
-      font-size: 18px;
       margin-top: 15px;
-      color: #00ffcc;
+    }
+    #statusMsg {
+      margin-top: 15px;
+      font-weight: bold;
+      display: none;
     }
     #downloadLink {
       display: none;
       margin-top: 10px;
-      color: #00ffcc;
-      text-decoration: none;
-      font-weight: bold;
+      font-size: 18px;
+      color: #00f7ff;
+      text-decoration: underline;
     }
     .note {
-      background: #ffffff11;
-      padding: 15px;
-      border-radius: 10px;
       margin-top: 20px;
       font-size: 14px;
-      line-height: 1.5;
+      color: #ccc;
     }
   </style>
 </head>
@@ -67,65 +60,103 @@
     <option value="854x480">480p</option>
   </select>
 
+  <div>
+    <button id="compressBtn">Compress</button>
+    <button id="stopBtn">Stop</button>
+  </div>
+
   <progress id="progressBar" value="0" max="100"></progress>
-  <div id="doneMsg">Compression Done!</div>
+  <div id="statusMsg"></div>
   <a id="downloadLink" download="compressed_video.webm">Download Compressed Video</a>
 
   <div class="note">
     <strong>Instructions:</strong><br>
-    - This tool works 100% offline in your browser. No data is uploaded.<br>
-    - <strong>AV1:</strong> Highest quality compression, but very slow. Best for laptops/desktops or high-end phones.<br>
-    - <strong>H.265:</strong> Faster and more suitable for phones like iQOO Z7, with good quality.<br>
-    - Compression time depends on file size and device performance.<br>
+    - 100% offline compression in your browser.<br>
+    - AV1 = better quality, slower. H.265 = faster, good quality.<br>
+    - Use "Stop" button to cancel compression if needed.<br>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.1/dist/ffmpeg.min.js"></script>
   <script>
     const { createFFmpeg, fetchFile } = FFmpeg;
-    const ffmpeg = createFFmpeg({ log: true });
+    let ffmpeg = createFFmpeg({ log: true });
+    let stopRequested = false;
 
-    document.getElementById('videoInput').addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
+    async function initializeFFmpeg() {
+      ffmpeg = createFFmpeg({ log: true });
+      await ffmpeg.load();
+    }
+
+    function showStatus(msg, color = 'lightgreen') {
+      const status = document.getElementById('statusMsg');
+      status.textContent = msg;
+      status.style.color = color;
+      status.style.display = 'block';
+    }
+
+    document.getElementById('compressBtn').addEventListener('click', async () => {
+      stopRequested = false;
+      const fileInput = document.getElementById('videoInput');
+      const file = fileInput.files[0];
+      if (!file) {
+        alert('Please select a video file first.');
+        return;
+      }
 
       const codec = document.getElementById('codecSelect').value;
       const resolution = document.getElementById('resolutionSelect').value;
 
       document.getElementById('progressBar').value = 0;
-      document.getElementById('doneMsg').style.display = "none";
+      showStatus("Compressing...", "orange");
       document.getElementById('downloadLink').style.display = "none";
 
       if (!ffmpeg.isLoaded()) await ffmpeg.load();
 
       ffmpeg.setProgress(({ ratio }) => {
+        if (stopRequested) return;
         document.getElementById('progressBar').value = Math.round(ratio * 100);
       });
 
       ffmpeg.FS('writeFile', 'input.mp4', await fetchFile(file));
 
       const args = ['-i', 'input.mp4'];
-
       if (resolution !== 'original') {
         args.push('-vf', `scale=${resolution}`);
       }
 
       if (codec === 'av1') {
         args.push('-c:v', 'libaom-av1', '-crf', '30', '-b:v', '0');
-      } else if (codec === 'h265') {
+      } else {
         args.push('-c:v', 'libx265', '-crf', '28');
       }
 
       args.push('-c:a', 'copy', 'output.webm');
 
-      await ffmpeg.run(...args);
+      try {
+        await ffmpeg.run(...args);
 
-      const data = ffmpeg.FS('readFile', 'output.webm');
-      const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/webm' }));
-      const link = document.getElementById('downloadLink');
-      link.href = url;
-      link.style.display = 'block';
-      document.getElementById('doneMsg').style.display = "block";
+        if (stopRequested) return;
+
+        const data = ffmpeg.FS('readFile', 'output.webm');
+        const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/webm' }));
+        const link = document.getElementById('downloadLink');
+        link.href = url;
+        link.style.display = 'block';
+        showStatus("Compression Done!", "lightgreen");
+      } catch (e) {
+        if (!stopRequested) alert("Compression failed.");
+      }
     });
+
+    document.getElementById('stopBtn').addEventListener('click', async () => {
+      stopRequested = true;
+      document.getElementById('progressBar').value = 0;
+      showStatus("Compression Stopped.", "red");
+      ffmpeg = null;
+      await initializeFFmpeg();
+    });
+
+    initializeFFmpeg();
   </script>
 </body>
 </html>
