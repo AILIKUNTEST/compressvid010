@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>compressvid010 - Video Compressor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
+      color: white;
+      text-align: center;
+    }
+    input, select, button {
+      margin: 10px 0;
+      padding: 10px;
+      width: 100%;
+      max-width: 300px;
+      border: none;
+      border-radius: 5px;
+    }
+    progress {
+      width: 100%;
+      height: 20px;
+      margin-top: 20px;
+    }
+    #doneMsg {
+      display: none;
+      font-size: 18px;
+      margin-top: 15px;
+      color: #00ffcc;
+    }
+    #downloadLink {
+      display: none;
+      margin-top: 10px;
+      color: #00ffcc;
+      text-decoration: none;
+      font-weight: bold;
+    }
+    .note {
+      background: #ffffff11;
+      padding: 15px;
+      border-radius: 10px;
+      margin-top: 20px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <h2>compressvid010 - AV1/H.265 Video Compressor</h2>
+
+  <input type="file" id="videoInput" accept="video/*">
+
+  <label for="codecSelect">Choose Codec:</label>
+  <select id="codecSelect">
+    <option value="av1">AV1 (High Quality, Slow – for High-End Devices)</option>
+    <option value="h265">H.265 (Fast – for Mid/Low-End Devices)</option>
+  </select>
+
+  <label for="resolutionSelect">Choose Resolution:</label>
+  <select id="resolutionSelect">
+    <option value="original">Original</option>
+    <option value="1920x1080">1080p</option>
+    <option value="1280x720">720p</option>
+    <option value="854x480">480p</option>
+  </select>
+
+  <progress id="progressBar" value="0" max="100"></progress>
+  <div id="doneMsg">Compression Done!</div>
+  <a id="downloadLink" download="compressed_video.webm">Download Compressed Video</a>
+
+  <div class="note">
+    <strong>Instructions:</strong><br>
+    - This tool works 100% offline in your browser. No data is uploaded.<br>
+    - <strong>AV1:</strong> Highest quality compression, but very slow. Best for laptops/desktops or high-end phones.<br>
+    - <strong>H.265:</strong> Faster and more suitable for phones like iQOO Z7, with good quality.<br>
+    - Compression time depends on file size and device performance.<br>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.1/dist/ffmpeg.min.js"></script>
+  <script>
+    const { createFFmpeg, fetchFile } = FFmpeg;
+    const ffmpeg = createFFmpeg({ log: true });
+
+    document.getElementById('videoInput').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const codec = document.getElementById('codecSelect').value;
+      const resolution = document.getElementById('resolutionSelect').value;
+
+      document.getElementById('progressBar').value = 0;
+      document.getElementById('doneMsg').style.display = "none";
+      document.getElementById('downloadLink').style.display = "none";
+
+      if (!ffmpeg.isLoaded()) await ffmpeg.load();
+
+      ffmpeg.setProgress(({ ratio }) => {
+        document.getElementById('progressBar').value = Math.round(ratio * 100);
+      });
+
+      ffmpeg.FS('writeFile', 'input.mp4', await fetchFile(file));
+
+      const args = ['-i', 'input.mp4'];
+
+      if (resolution !== 'original') {
+        args.push('-vf', `scale=${resolution}`);
+      }
+
+      if (codec === 'av1') {
+        args.push('-c:v', 'libaom-av1', '-crf', '30', '-b:v', '0');
+      } else if (codec === 'h265') {
+        args.push('-c:v', 'libx265', '-crf', '28');
+      }
+
+      args.push('-c:a', 'copy', 'output.webm');
+
+      await ffmpeg.run(...args);
+
+      const data = ffmpeg.FS('readFile', 'output.webm');
+      const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/webm' }));
+      const link = document.getElementById('downloadLink');
+      link.href = url;
+      link.style.display = 'block';
+      document.getElementById('doneMsg').style.display = "block";
+    });
+  </script>
+</body>
+</html>
