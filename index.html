@@ -1,181 +1,116 @@
-<!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE html><html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>compressvid010 - Video Compressor</title>
   <style>
     body {
-      background: #fff;
-      color: #222;
-      font-family: sans-serif;
+      font-family: Arial, sans-serif;
       text-align: center;
+      background: linear-gradient(to bottom, #ffffff, #f0f0f0);
       padding: 20px;
     }
-    input, select, button {
+    h1 {
+      margin-bottom: 10px;
+    }
+    input[type=file], select, button {
       margin: 10px;
       padding: 10px;
       font-size: 16px;
     }
-    #dropZone {
-      border: 2px dashed #aaa;
-      padding: 30px;
-      margin: 20px auto;
-      width: 90%;
-      max-width: 400px;
-      border-radius: 10px;
-    }
     #progressBar {
       width: 80%;
       height: 20px;
-      margin-top: 15px;
+      background-color: #ddd;
+      margin: 20px auto;
+      border-radius: 10px;
+      overflow: hidden;
     }
-    #statusMsg {
-      margin-top: 15px;
-      font-size: 18px;
+    #progressFill {
+      height: 100%;
+      width: 0%;
+      background-color: #4CAF50;
+      transition: width 0.3s;
+    }
+    #message {
       font-weight: bold;
-      animation: fadeIn 0.5s ease-in-out;
-    }
-    #downloadLink {
-      display: none;
-      margin-top: 10px;
-      font-size: 18px;
-      color: #007bff;
-      text-decoration: underline;
-    }
-    .note {
       margin-top: 20px;
-      font-size: 14px;
-      color: #555;
     }
-    @keyframes fadeIn {
-      from {opacity: 0;}
-      to {opacity: 1;}
+    .button-animate {
+      transition: transform 0.2s;
+    }
+    .button-animate:active {
+      transform: scale(0.95);
     }
   </style>
 </head>
 <body>
-  <h2>compressvid010</h2>
-  <div id="dropZone">Drag and drop video here or <input type="file" id="videoInput" accept="video/*" /></div>
+  <h1>compressvid010</h1>
+  <p>Choose a video file to compress (All client-side, nothing is uploaded)</p>
+  <input type="file" id="videoInput" accept="video/*"><br><label for="qualitySelect">Select Compression Quality:</label> <select id="qualitySelect"> <option value="28">Slightly Compressed (CRF 28)</option> <option value="25">Better Quality (CRF 25)</option> </select><br>
 
-  <label for="codecSelect">Codec:</label>
-  <select id="codecSelect">
-    <option value="av1">AV1 (High-end)</option>
-    <option value="h265">H.265 (Faster)</option>
-  </select>
+<button class="button-animate" onclick="startCompression()">Start Compression</button> <button class="button-animate" onclick="stopCompression()">Stop Compression</button>
 
-  <label for="resolutionSelect">Resolution:</label>
-  <select id="resolutionSelect">
-    <option value="original">Original</option>
-    <option value="1920x1080">1080p</option>
-    <option value="1280x720">720p</option>
-    <option value="854x480">480p</option>
-  </select>
-
-  <div>
-    <button id="compressBtn">Start Compression</button>
-    <button id="stopBtn">Stop</button>
-  </div>
-
-  <progress id="progressBar" value="0" max="100"></progress>
-  <div id="statusMsg"></div>
-  <a id="downloadLink" download="compressed_video.webm">Download Compressed Video</a>
-
-  <div class="note">
-    AV1 = higher quality but slow, use on strong devices.<br>
-    H.265 = faster compression, good for low/mid devices.<br>
-    Your video never leaves your device. 100% private.
-  </div>
-
-  <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.1/dist/ffmpeg.min.js"></script>
-  <script>
+  <div id="progressBar"><div id="progressFill"></div></div>
+  <div id="message"></div>  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.2/dist/ffmpeg.min.js"></script>  <script>
     const { createFFmpeg, fetchFile } = FFmpeg;
-    let ffmpeg = createFFmpeg({ log: true });
-    let selectedFile = null;
+    const ffmpeg = createFFmpeg({ log: true });
     let stopRequested = false;
 
-    const dropZone = document.getElementById("dropZone");
-    dropZone.addEventListener("dragover", e => {
-      e.preventDefault();
-      dropZone.style.backgroundColor = "#f0f0f0";
-    });
-    dropZone.addEventListener("dragleave", () => {
-      dropZone.style.backgroundColor = "transparent";
-    });
-    dropZone.addEventListener("drop", e => {
-      e.preventDefault();
-      selectedFile = e.dataTransfer.files[0];
-      document.getElementById("videoInput").files = e.dataTransfer.files;
-      dropZone.style.backgroundColor = "transparent";
-    });
-
-    document.getElementById("videoInput").addEventListener("change", (e) => {
-      selectedFile = e.target.files[0];
-    });
-
-    function showStatus(message, color = "black") {
-      const status = document.getElementById("statusMsg");
-      status.textContent = message;
-      status.style.color = color;
-      status.style.display = "block";
-    }
-
     async function startCompression() {
-      if (!selectedFile) {
-        alert("Please select or drop a video first.");
+      const fileInput = document.getElementById('videoInput');
+      const message = document.getElementById('message');
+      const quality = document.getElementById('qualitySelect').value;
+      const progressFill = document.getElementById('progressFill');
+
+      if (!fileInput.files.length) {
+        message.textContent = 'Please choose a video file first.';
         return;
       }
 
+      message.textContent = 'Compressing...';
+      progressFill.style.width = '0%';
       stopRequested = false;
-      showStatus("Compressing...", "orange");
-      document.getElementById("progressBar").value = 0;
-      document.getElementById("downloadLink").style.display = "none";
+
+      const file = fileInput.files[0];
+      const fileName = file.name;
+      const outputFileName = `compressed_${fileName}`;
 
       if (!ffmpeg.isLoaded()) await ffmpeg.load();
 
-      const codec = document.getElementById("codecSelect").value;
-      const resolution = document.getElementById("resolutionSelect").value;
+      ffmpeg.FS('writeFile', fileName, await fetchFile(file));
 
-      ffmpeg.FS('writeFile', 'input.mp4', await fetchFile(selectedFile));
+      const args = ['-i', fileName, '-c:v', 'libx264', '-crf', quality, '-c:a', 'copy', outputFileName];
+
       ffmpeg.setProgress(({ ratio }) => {
-        if (stopRequested) return;
-        document.getElementById("progressBar").value = Math.round(ratio * 100);
+        if (stopRequested) {
+          message.textContent = 'Compression stopped';
+          throw new Error('Compression stopped');
+        }
+        progressFill.style.width = `${Math.min(ratio * 100, 100)}%`;
       });
-
-      const args = ['-i', 'input.mp4'];
-      if (resolution !== "original") {
-        args.push('-vf', `scale=${resolution}`);
-      }
-      if (codec === "av1") {
-        args.push('-c:v', 'libaom-av1', '-crf', '30', '-b:v', '0');
-      } else {
-        args.push('-c:v', 'libx265', '-crf', '28');
-      }
-      args.push('-c:a', 'copy', 'output.webm');
 
       try {
         await ffmpeg.run(...args);
-        if (stopRequested) return;
+        const data = ffmpeg.FS('readFile', outputFileName);
+        const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
 
-        const data = ffmpeg.FS('readFile', 'output.webm');
-        const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/webm' }));
-        const link = document.getElementById('downloadLink');
-        link.href = url;
-        link.style.display = 'block';
-        showStatus("Compression Done!", "green");
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = outputFileName;
+        a.click();
+
+        message.textContent = 'Compression Done';
       } catch (e) {
-        if (!stopRequested) showStatus("Compression Failed.", "red");
+        if (!stopRequested) message.textContent = 'Compression failed';
       }
+
+      progressFill.style.width = '0%';
     }
 
-    async function stopCompression() {
+    function stopCompression() {
       stopRequested = true;
-      showStatus("Compression Stopped.", "red");
-      ffmpeg = createFFmpeg({ log: true });
+      document.getElementById('message').textContent = 'Compression Stopped';
     }
-
-    document.getElementById("compressBtn").addEventListener("click", startCompression);
-    document.getElementById("stopBtn").addEventListener("click", stopCompression);
-  </script>
-</body>
+  </script></body>
 </html>
